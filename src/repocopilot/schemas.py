@@ -17,3 +17,19 @@ class AnswerWithCitations(BaseModel):
     citations: List[Citation]
     confidence: str = Field(..., description="alta|media|bassa")
     open_questions: List[str] = []
+
+class RiskItem(BaseModel):
+    severity: str = Field(..., description="alta|media|bassa")
+    description: str
+
+class PrNotes(BaseModel):
+    title: str
+    summary: List[str]
+    files_changed: List[str]
+    risks: List[RiskItem]
+    suggested_tests: List[str]
+    rollout_plan: List[str]
+    rollback_plan: List[str]
+    open_questions: List[str]
+    citations: List[Citation]  # riusa Citation (ref, quote)
+    confidence: str = Field(..., description="alta|media|bassa")

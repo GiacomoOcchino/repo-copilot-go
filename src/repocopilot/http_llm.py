@@ -34,3 +34,28 @@ def chat(system: str, user: str,temperature: float = 0.0) -> str:
         r.raise_for_status()
         data = r.json()
         return data["choices"][0]["message"]["content"]
+    
+
+def ollama_chat_structured(messages: List[Dict[str, str]], schema: Dict[str, Any], temperature: float = 0.0) -> str:
+    """
+    Chiama l'endpoint Ollama nativo /api/chat usando 'format' (JSON schema),
+    che forza l'output a rispettare lo schema (Structured Outputs).
+    """
+    # settings.base_url di solito è http://localhost:11434/v1
+    root = settings.base_url
+    if root.endswith("/v1"):
+        root = root[:-3]
+
+    payload: Dict[str, Any] = {
+        "model": settings.chat_model,
+        "messages": messages,
+        "stream": False,
+        "format": schema,                 # <-- schema JSON qui
+        "options": {"temperature": temperature},
+    }
+
+    with httpx.Client(base_url=root, timeout=120.0) as c:
+        r = c.post("/api/chat", json=payload)
+        r.raise_for_status()
+        data = r.json()
+        return data["message"]["content"]
