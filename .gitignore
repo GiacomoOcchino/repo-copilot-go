@@ -5,3 +5,4 @@ __pycache__/
 .env
 out/
 out_pr/
+input_pr/
