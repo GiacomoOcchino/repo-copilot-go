@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/repocopilot/__init__.py
+src/repocopilot/cli.py
+src/repocopilot/config.py
+src/repocopilot/http_llm.py
+src/repocopilot/indexer.py
+src/repocopilot/rag.py
+src/repocopilot/schemas.py
+src/repocopilot.egg-info/PKG-INFO
+src/repocopilot.egg-info/SOURCES.txt
+src/repocopilot.egg-info/dependency_links.txt
+src/repocopilot.egg-info/entry_points.txt
+src/repocopilot.egg-info/requires.txt
+src/repocopilot.egg-info/top_level.txt
