@@ -61,8 +61,13 @@ def index(
 @app.command()
 def ask(question: str, out_dir: str = typer.Option("out", "--out")):
     """Q/A sulla codebase con citazioni (Markdown + JSON)."""
-    ans, sources = answer_with_citations(question)
+    ans, sources, raw = answer_with_citations(question)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
+    (Path(out_dir) / "sources_debug.txt").write_text(
+        "\n\n".join([f"[{s.ref}] {s.path} (chunk_id={s.chunk_id})\n{s.excerpt}" for s in sources]),
+        encoding="utf-8",
+    )
+    (Path(out_dir) / "raw_llm.txt").write_text(raw or "", encoding="utf-8")
 
     (Path(out_dir) / "answer.json").write_text(ans.model_dump_json(indent=2), encoding="utf-8")
 
@@ -76,6 +81,7 @@ def ask(question: str, out_dir: str = typer.Option("out", "--out")):
     md.append("\n## Sources (retrieved)")
     for s in sources:
         md.append(f"- **{s.ref}** → `{s.path}` (chunk: `{s.chunk_id}`)")
+        #print(s)
 
     (Path(out_dir) / "answer.md").write_text("\n".join(md), encoding="utf-8")
 

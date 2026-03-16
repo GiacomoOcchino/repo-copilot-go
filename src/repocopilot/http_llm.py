@@ -20,7 +20,7 @@ def embed(texts: List[str]) -> List[List[float]]:
         data = r.json()
         return [item["embedding"] for item in data["data"]]
 
-def chat(system: str, user: str,temperature: float = 0.0) -> str:
+def chat(system: str, user: str,temperature: float = 0.0, max_tokens: int = 800) -> str:
     payload = {
         "model": settings.chat_model,
         "messages": [
@@ -28,6 +28,7 @@ def chat(system: str, user: str,temperature: float = 0.0) -> str:
             {"role": "user", "content": user},
         ],
         "temperature": temperature,
+        "max_tokens": max_tokens,
     }
     with _client() as c:
         r = c.post("/chat/completions", json=payload)
@@ -54,7 +55,7 @@ def ollama_chat_structured(messages: List[Dict[str, str]], schema: Dict[str, Any
         "options": {"temperature": temperature},
     }
 
-    with httpx.Client(base_url=root, timeout=120.0) as c:
+    with httpx.Client(base_url=root, timeout=300.0) as c:
         r = c.post("/api/chat", json=payload)
         r.raise_for_status()
         data = r.json()
