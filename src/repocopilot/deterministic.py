@@ -206,7 +206,9 @@ def try_deterministic_doctor(question: str) -> Optional[Tuple[AnswerWithCitation
 
 def try_deterministic_embeddings_where(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     q = question.lower()
-    if "embedding" not in q and "embeddings" not in q:
+    #if "embedding" not in q and "embeddings" not in q:
+    #    return None
+    if not (("embedding" in q or "embeddings" in q) and ("dove" in q or "where" in q or "file" in q or "quali" in q or "punti" in q)):
         return None
 
     root = _repo_root()
@@ -240,4 +242,59 @@ def try_deterministic_embeddings_where(question: str) -> Optional[Tuple[AnswerWi
         confidence="media",
         open_questions=[],
     )
+    return ans, sources
+
+def try_deterministic_embed_purpose(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+    q = question.lower()
+    if not (("embed" in q or "embeddings" in q) and ("scopo" in q or "purpose" in q or "perché" in q or "why" in q)):
+        return None
+
+    root = _repo_root()
+    rag = root / "src" / "repocopilot" / "rag.py"
+    idx = root / "src" / "repocopilot" / "indexer.py"
+    http = root / "src" / "repocopilot" / "http_llm.py"
+
+    def first_line_containing(path: Path, needle: str) -> str:
+        if not path.exists():
+            return ""
+        txt = _read_text(path)
+        for ln in txt.splitlines():
+            if needle in ln:
+                return ln.strip()
+        return ""
+
+    rag_line = first_line_containing(rag, "q_emb = embed(")         # query embedding (retrieval)
+    idx_line = first_line_containing(idx, "embs = embed(")          # doc embedding (indexing)  <-- perfetto
+    http_line = first_line_containing(http, "def embed(")           # definizione
+
+    sources: List[Source] = []
+    if rag.exists():
+        sources.append(_make_source("S1", rag, "rag.py::embed-call", _read_text(rag)))
+    if idx.exists():
+        sources.append(_make_source("S2", idx, "indexer.py::embed-call", _read_text(idx)))
+    if http.exists():
+        sources.append(_make_source("S3", http, "http_llm.py::embed-def", _read_text(http)))
+
+    answer_md = (
+        "✅ `embed()` serve a trasformare testo in vettori (embeddings) e viene usata in due momenti:\n\n"
+        "1) **Retrieval (query embedding)**: in `rag.py`, per vettorializzare la domanda (`q_emb = embed(...)`) e interrogare il vector store.\n"
+        "2) **Indicizzazione (document embedding)**: in `indexer.py`, per vettorializzare i chunk dei file (`embs = embed(docs)`) e salvarli in Chroma.\n\n"
+        "La chiamata HTTP verso Ollama per ottenere embeddings è implementata in `http_llm.py` (def `embed`)."
+    )
+
+    citations = []
+    if rag_line:
+        citations.append({"ref": "S1", "quote": rag_line[:200]})
+    if idx_line:
+        citations.append({"ref": "S2", "quote": idx_line[:200]})
+    if http_line:
+        citations.append({"ref": "S3", "quote": http_line[:200]})
+
+    ans = AnswerWithCitations(
+        answer_md=answer_md,
+        citations=citations,
+        confidence="alta" if len(citations) >= 2 else "media",
+        open_questions=[],
+    )
+
     return ans, sources

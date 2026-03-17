@@ -15,6 +15,7 @@ from .deterministic import (
     try_deterministic_cli_commands,
     try_deterministic_default_models,
     try_deterministic_doctor,
+    try_deterministic_embed_purpose,  
     try_deterministic_embeddings_where,
 )
 
@@ -204,13 +205,54 @@ def _verify_and_filter_citations(ans: AnswerWithCitations, sources: List[Source]
 # -----------------------
 # Main ASK (Strategy A)
 # -----------------------
+def pick_citations(question: str, sources: List[Source], max_cits: int = 3) -> List[dict]:
+    ql = question.lower()
+
+    # Priorità alta: call-site reali
+    high = ["q_emb = embed(", "res = col.query("]
+    mid = ["col.query(", "query_embeddings", "n_results=", "include=["]
+    low = ["def embed(", "def retrieve("]
+
+    # righe da evitare (meta)
+    banned = ["needles =", "Keywords:", "if any(k in ql", "evidence::"]
+
+    if any(k in ql for k in ("retrieve", "col.query", "embed", "embedding", "embeddings")):
+        priority_sets = [high, mid, low]
+    else:
+        priority_sets = [low, mid]
+
+    def scan(needles: List[str]) -> List[dict]:
+        out = []
+        for s in sources:
+            for ln in s.excerpt.splitlines():
+                l = ln.strip()
+                if not l or any(b in l for b in banned):
+                    continue
+                if any(n in l for n in needles):
+                    out.append({"ref": s.ref, "quote": l[:200]})
+                    break
+            if len(out) >= max_cits:
+                break
+        return out
+
+    cits: List[dict] = []
+    for needles in priority_sets:
+        for c in scan(needles):
+            if c not in cits:
+                cits.append(c)
+            if len(cits) >= max_cits:
+                return cits
+
+    return cits
+
 def answer_with_citations(question: str) -> Tuple[AnswerWithCitations, List[Source], str]:
-    # deterministic first
+    # deterministici prima
     for resolver in (
         try_deterministic_entrypoint,
         try_deterministic_cli_commands,
         try_deterministic_default_models,
         try_deterministic_doctor,
+        try_deterministic_embed_purpose,  
         try_deterministic_embeddings_where,
     ):
         out = resolver(question)
@@ -220,47 +262,34 @@ def answer_with_citations(question: str) -> Tuple[AnswerWithCitations, List[Sour
 
     sources = retrieve(question)
 
-    allowed_refs = ", ".join(s.ref for s in sources)
+    # budget: evidenze + 2 chunk
+    if any(s.chunk_id.startswith("evidence::") for s in sources):
+        evid = [s for s in sources if s.chunk_id.startswith("evidence::")]
+        other = [s for s in sources if not s.chunk_id.startswith("evidence::")]
+        sources = evid + other[:2]
+
     sources_block = "\n".join(
         f"[{s.ref}] path={s.path} (chunk_id={s.chunk_id})\nexcerpt:\n{s.excerpt}\n"
         for s in sources
     )
 
     system = (
-        "Sei RepoCopilot.\n"
-        "Regole:\n"
-        "- Usa SOLO le fonti fornite.\n"
-        "- Rispondi SOLO con JSON valido (niente markdown).\n"
-        f"- citations[].ref deve essere uno tra: {allowed_refs}\n"
-        "- citations[].quote deve essere copiato ESATTAMENTE dalle fonti.\n"
-        "Schema:\n"
-        "{\"answer_md\": string, \"citations\": [{\"ref\": string, \"quote\": string}], \"confidence\": \"alta|media|bassa\", \"open_questions\": [string]}"
+        "Sei RepoCopilot. Usa SOLO le fonti fornite.\n"
+        "Rispondi in Markdown, tecnico ma chiaro.\n"
+        "Se non trovi info nelle fonti, dillo esplicitamente."
     )
-
-    user = (
-        f"DOMANDA:\n{question}\n\n"
-        f"FONTI:\n{sources_block}\n\n"
-        "Richiesta:\n"
-        "- Spiega in 3-6 bullet.\n"
-        "- Aggiungi 1-3 citazioni (copiaincolla righe dagli excerpt).\n"
-    )
+    user = f"DOMANDA:\n{question}\n\nFONTI:\n{sources_block}\n"
 
     raw = chat(system=system, user=user, temperature=0.0, max_tokens=900)
-    try:
-        model = _parse_to_model(raw)
-    except Exception:
-        # retry JSON-only
-        raw2 = chat(system=system + "\nATTENZIONE: SOLO JSON valido.", user=user, temperature=0.0, max_tokens=900)
-        try:
-            model = _parse_to_model(raw2)
-        except Exception:
-            model = AnswerWithCitations(
-                answer_md=raw.strip(),
-                citations=[],
-                confidence="bassa",
-                open_questions=["Output non JSON valido anche dopo retry."],
-            )
-            return model, sources , raw
 
-    model = _verify_and_filter_citations(model, sources)
-    return model, sources, raw
+    ans = AnswerWithCitations(
+        answer_md=raw.strip(),
+        citations=pick_citations(question, sources),
+        confidence="media" if sources else "bassa",
+        open_questions=[],
+    )
+
+    # verifica citazioni (se non verificabili, le scarta)
+    ans = _verify_and_filter_citations(ans, sources)
+
+    return ans, sources, raw
