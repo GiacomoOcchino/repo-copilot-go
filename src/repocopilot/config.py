@@ -12,11 +12,16 @@ class Settings(BaseModel):
     collection_name: str = os.getenv("REPOCOPILOT_COLLECTION", "repo_chunks")
 
     # Indexing
-    include_ext: tuple[str, ...] = (".md", ".txt", ".py", ".toml")
+    include_ext: tuple[str, ...] = (".md", ".txt", ".py", ".toml",".php",".html")
     exclude_dirs: tuple[str, ...] = (
     ".git", ".venv", "venv", "node_modules", "dist", "build", "__pycache__",
-    "out", ".repocopilot", "repocopilot.egg-info", ".pytest_cache", ".mypy_cache", ".ruff_cache"
+    "out","out_pr","out_pr_old", ".repocopilot", "repocopilot.egg-info", ".pytest_cache", ".mypy_cache", ".ruff_cache","vendor","node_modules"
     )
+    exclude_files: list[str] = [
+    "src/repocopilot/deterministic.py",
+    "src/repocopilot/pr_notes.py",
+    "src/repocopilot/git_utils.py",
+]
     max_chars_per_chunk: int = 1800
     overlap_chars: int = 150
 

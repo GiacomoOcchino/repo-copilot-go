@@ -14,6 +14,9 @@ def iter_files(root: Path) -> Iterator[Path]:
         if any(part in settings.exclude_dirs for part in p.parts):
             continue
         if p.suffix.lower() in settings.include_ext:
+            rel = p.as_posix().replace("\\", "/")
+            if any(rel.endswith(x.replace("\\", "/")) for x in getattr(settings, "exclude_files", [])):
+                continue
             yield p
 
 def chunk_text(text: str) -> List[str]:

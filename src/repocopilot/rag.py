@@ -152,6 +152,8 @@ def retrieve(question: str) -> List[Source]:
     ql = question.lower()
     if any(k in ql for k in ("retrieve", "col.query", "embed", "embedding", "embeddings")):
         q = question + "\nKeywords: q_emb = embed( res = col.query( query_embeddings include metadatas distances"
+    if any(k in ql for k in ("end-to-end", "end to end", "flusso", "pipeline", "cli.py", "answer_with_citations", "typer")):
+        q = question + "\nKeywords: cli.py ask() typer rag.py answer_with_citations retrieve() http_llm.py chat() embed() indexer.py get_collection() col.query schemas.py AnswerWithCitations"
 
     q_emb = embed([q])[0]
     n = max(settings.top_k, 10)
@@ -181,7 +183,9 @@ def retrieve(question: str) -> List[Source]:
         seen.add(key)
         deduped.append(s)
     sources = deduped[:settings.top_k]
-
+    if any(k in ql for k in ("end-to-end", "end to end", "flusso", "pipeline")):
+    # tieni fuori deterministic.py dai primi risultati
+        sources.sort(key=lambda s: ("deterministic.py" in s.path.lower(), s.path.lower()))
     # assign refs
     for i, s in enumerate(sources, start=1):
         s.ref = f"S{i}"
@@ -245,20 +249,21 @@ def pick_citations(question: str, sources: List[Source], max_cits: int = 3) -> L
 
     return cits
 
-def answer_with_citations(question: str) -> Tuple[AnswerWithCitations, List[Source], str]:
+def answer_with_citations(question: str,rag_only:bool = False) -> Tuple[AnswerWithCitations, List[Source], str]:
     # deterministici prima
-    for resolver in (
-        try_deterministic_entrypoint,
-        try_deterministic_cli_commands,
-        try_deterministic_default_models,
-        try_deterministic_doctor,
-        try_deterministic_embed_purpose,  
-        try_deterministic_embeddings_where,
-    ):
-        out = resolver(question)
-        if out is not None:
-            ans, srcs = out
-            return ans, srcs, ""
+    if not rag_only:
+        for resolver in (
+            try_deterministic_entrypoint,
+            try_deterministic_cli_commands,
+            try_deterministic_default_models,
+            try_deterministic_doctor,
+            try_deterministic_embed_purpose,  
+            try_deterministic_embeddings_where,
+        ):
+            out = resolver(question)
+            if out is not None:
+                ans, srcs = out
+                return ans, srcs, ""
 
     sources = retrieve(question)
 
@@ -274,11 +279,20 @@ def answer_with_citations(question: str) -> Tuple[AnswerWithCitations, List[Sour
     )
 
     system = (
-        "Sei RepoCopilot. Usa SOLO le fonti fornite.\n"
-        "Rispondi in Markdown, tecnico ma chiaro.\n"
-        "Se non trovi info nelle fonti, dillo esplicitamente."
+    "Sei RepoCopilot. Usa SOLO le fonti fornite.\n"
+    "Rispondi in Markdown.\n"
+    "DEVI produrre ESATTAMENTE 6 bullet numerati (1..6).\n"
+    "Ogni bullet deve citare almeno un file/funzione tra le fonti.\n"
+    "Non aggiungere introduzioni o conclusioni."
     )
-    user = f"DOMANDA:\n{question}\n\nFONTI:\n{sources_block}\n"
+
+    user = (
+        f"DOMANDA:\n{question}\n\n"
+        f"FONTI:\n{sources_block}\n\n"
+        "FORMATO OBBLIGATORIO:\n"
+        "1. ...\n2. ...\n3. ...\n4. ...\n5. ...\n6. ...\n"
+        "Contenuto richiesto: flusso end-to-end del comando ask (cli.py -> answer_with_citations -> retrieve -> embed -> col.query -> chat -> output file).\n"
+    )
 
     raw = chat(system=system, user=user, temperature=0.0, max_tokens=900)
 

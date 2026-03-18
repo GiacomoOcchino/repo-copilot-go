@@ -59,9 +59,14 @@ def index(
     ))
 
 @app.command()
-def ask(question: str, out_dir: str = typer.Option("out", "--out")):
+def ask(
+    question: str,
+    out_dir: str = typer.Option("out", "--out"),
+    rag_only: bool = typer.Option(False, "--rag-only")
+    ):
     """Q/A sulla codebase con citazioni (Markdown + JSON)."""
-    ans, sources, raw = answer_with_citations(question)
+    typer.echo(f"[DEBUG] rag_only={rag_only}")
+    ans, sources, raw = answer_with_citations(question,rag_only=rag_only)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     (Path(out_dir) / "sources_debug.txt").write_text(
         "\n\n".join([f"[{s.ref}] {s.path} (chunk_id={s.chunk_id})\n{s.excerpt}" for s in sources]),
