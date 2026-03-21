@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -32,11 +30,15 @@ def _filter_bad_citations(notes: PrNotes, sources: List[Source]) -> PrNotes:
     notes.citations = good
     if notes.confidence == "alta" and len(good) == 0:
         notes.confidence = "media"
-        notes.open_questions.append("Nessuna citazione verificabile trovata negli snippet forniti.")
+        notes.open_questions.append(
+            "Nessuna citazione verificabile trovata negli snippet forniti."
+        )
     return notes
 
 
-def generate_pr_notes(diff_text: str, file_snippets: List[Tuple[str, str]], repo_root: Path) -> Tuple[PrNotes, List[Source]]:
+def generate_pr_notes(
+    diff_text: str, file_snippets: List[Tuple[str, str]], repo_root: Path
+) -> Tuple[PrNotes, List[Source]]:
     """
     diff_text: testo completo del git diff
     file_snippets: lista (path, excerpt) per i file toccati
@@ -45,13 +47,24 @@ def generate_pr_notes(diff_text: str, file_snippets: List[Tuple[str, str]], repo
 
     # S1: diff (tagliato per non esplodere)
     diff_excerpt = diff_text[:3500]
-    sources.append(Source(ref="S1", chunk_id="git_diff::raw", path="git diff", excerpt=diff_excerpt))
+    sources.append(
+        Source(
+            ref="S1", chunk_id="git_diff::raw", path="git diff", excerpt=diff_excerpt
+        )
+    )
 
     # S2..: snippet file
     for i, (path, excerpt) in enumerate(file_snippets, start=2):
         if not excerpt.strip():
             continue
-        sources.append(Source(ref=f"S{i}", chunk_id="file_context::hunks", path=path, excerpt=excerpt[:2200]))
+        sources.append(
+            Source(
+                ref=f"S{i}",
+                chunk_id="file_context::hunks",
+                path=path,
+                excerpt=excerpt[:2200],
+            )
+        )
         if len(sources) >= 10:
             break
 
@@ -69,31 +82,27 @@ def generate_pr_notes(diff_text: str, file_snippets: List[Tuple[str, str]], repo
         "\n"
         "Schema JSON:\n"
         "{"
-        "\"title\": string,"
-        "\"summary\": [string],"
-        "\"files_changed\": [string],"
-        "\"risks\": [{\"severity\":\"alta|media|bassa\",\"description\":string}],"
-        "\"suggested_tests\": [string],"
-        "\"rollout_plan\": [string],"
-        "\"rollback_plan\": [string],"
-        "\"open_questions\": [string],"
-        "\"citations\": [{\"ref\":\"S1|S2|...\",\"quote\":string}],"
-        "\"confidence\":\"alta|media|bassa\""
+        '"title": string,'
+        '"summary": [string],'
+        '"files_changed": [string],'
+        '"risks": [{"severity":"alta|media|bassa","description":string}],'
+        '"suggested_tests": [string],'
+        '"rollout_plan": [string],'
+        '"rollback_plan": [string],'
+        '"open_questions": [string],'
+        '"citations": [{"ref":"S1|S2|...","quote":string}],'
+        '"confidence":"alta|media|bassa"'
         "}"
     )
 
     # costruiamo blocco fonti
     sources_block = []
     for s in sources:
-        sources_block.append(
-            f"[{s.ref}] path={s.path}\nexcerpt:\n{s.excerpt}\n"
-        )
+        sources_block.append(f"[{s.ref}] path={s.path}\nexcerpt:\n{s.excerpt}\n")
 
     user = (
         "Genera PR notes basate sul diff e contesto file.\n\n"
-        "FONTI:\n"
-        + "\n".join(sources_block)
-        + "\n"
+        "FONTI:\n" + "\n".join(sources_block) + "\n"
         "Richieste:\n"
         "- summary: 3-7 bullet chiari\n"
         "- risks: pochi ma concreti, legati a ciò che cambia\n"
@@ -127,33 +136,21 @@ def generate_pr_notes(diff_text: str, file_snippets: List[Tuple[str, str]], repo
             citations=[],
             confidence="bassa",
         )
-    # try:
-    #     data = json.loads(js)
-    #     notes = PrNotes.model_validate(data)
-    # except Exception:
-    #     # fallback minimo se JSON non valida
-    #     notes = PrNotes(
-    #         title="PR Notes",
-    #         summary=["Il modello non ha restituito JSON valido."],
-    #         files_changed=[],
-    #         risks=[],
-    #         suggested_tests=[],
-    #         rollout_plan=[],
-    #         rollback_plan=[],
-    #         open_questions=["Ridurre il diff o aumentare snippet, poi riprovare."],
-    #         citations=[],
-    #         confidence="bassa",
-    #     )
 
     notes = _filter_bad_citations(notes, sources)
     if notes.files_changed == [".gitignore"]:
-      # migliora suggerimenti tipici
-      if not notes.suggested_tests:
-          notes.suggested_tests = [
-              "Esegui `git status` per verificare che i file attesi siano ancora tracciati.",
-              "Esegui `git check-ignore -v <path>` per verificare che le nuove regole ignorino solo ciò che vuoi."
-          ]
-      # rischi più realistici
-      if not notes.risks:
-          notes.risks = [{"severity":"media","description":"Rischio di ignorare file che dovrebbero restare versionati (regole troppo ampie)."}]
+        # migliora suggerimenti tipici
+        if not notes.suggested_tests:
+            notes.suggested_tests = [
+                "Esegui `git status` per verificare che i file attesi siano ancora tracciati.",
+                "Esegui `git check-ignore -v <path>` per verificare che le nuove regole ignorino solo ciò che vuoi.",
+            ]
+        # rischi più realistici
+        if not notes.risks:
+            notes.risks = [
+                {
+                    "severity": "media",
+                    "description": "Rischio di ignorare file che dovrebbero restare versionati (regole troppo ampie).",
+                }
+            ]
     return notes, sources

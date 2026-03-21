@@ -7,6 +7,7 @@ from chromadb.config import Settings as ChromaSettings
 from .config import settings
 from .http_llm import embed
 
+
 def iter_files(root: Path) -> Iterator[Path]:
     for p in root.rglob("*"):
         if p.is_dir():
@@ -15,9 +16,13 @@ def iter_files(root: Path) -> Iterator[Path]:
             continue
         if p.suffix.lower() in settings.include_ext:
             rel = p.as_posix().replace("\\", "/")
-            if any(rel.endswith(x.replace("\\", "/")) for x in getattr(settings, "exclude_files", [])):
+            if any(
+                rel.endswith(x.replace("\\", "/"))
+                for x in getattr(settings, "exclude_files", [])
+            ):
                 continue
             yield p
+
 
 def chunk_text(text: str) -> List[str]:
     maxc = settings.max_chars_per_chunk
@@ -34,6 +39,7 @@ def chunk_text(text: str) -> List[str]:
         i = max(0, end - ov)
     return chunks
 
+
 def get_client():
     Path(settings.index_dir).mkdir(parents=True, exist_ok=True)
     return chromadb.PersistentClient(
@@ -41,11 +47,13 @@ def get_client():
         settings=ChromaSettings(anonymized_telemetry=False),
     )
 
+
 def get_collection(client):
     return client.get_or_create_collection(
         name=settings.collection_name,
         metadata={"hnsw:space": "cosine"},
     )
+
 
 def reset_collection(client) -> None:
     # Elimina e ricrea la collection (utile se reindicizzi)
@@ -53,7 +61,10 @@ def reset_collection(client) -> None:
         client.delete_collection(name=settings.collection_name)
     except Exception:
         pass
-    client.get_or_create_collection(name=settings.collection_name, metadata={"hnsw:space": "cosine"})
+    client.get_or_create_collection(
+        name=settings.collection_name, metadata={"hnsw:space": "cosine"}
+    )
+
 
 def index_repo(repo_path: str, reset: bool = False) -> Tuple[int, int]:
     root = Path(repo_path).resolve()

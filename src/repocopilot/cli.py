@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 from pathlib import Path
 import typer
 from rich.console import Console
@@ -14,6 +13,7 @@ from .pr_notes import generate_pr_notes
 
 app = typer.Typer(add_completion=False)
 console = Console()
+
 
 @app.command()
 def doctor():
@@ -40,41 +40,59 @@ def doctor():
         console.print(f"❌ Chat KO: {e}")
         raise typer.Exit(code=1)
 
-    console.print(Panel.fit(
-        f"Base URL: {settings.base_url}\nChat model: {settings.chat_model}\nEmbed model: {settings.embed_model}\n"
-        f"Index dir: {settings.index_dir}\nCollection: {settings.collection_name}",
-        title="Config"
-    ))
+    console.print(
+        Panel.fit(
+            f"Base URL: {settings.base_url}\nChat model: {settings.chat_model}\nEmbed model: {settings.embed_model}\n"
+            f"Index dir: {settings.index_dir}\nCollection: {settings.collection_name}",
+            title="Config",
+        )
+    )
+
 
 @app.command()
 def index(
     path: str = typer.Argument("."),
-    reset: bool = typer.Option(False, "--reset", help="Elimina l'indice esistente e ricrea la collection.")
+    reset: bool = typer.Option(
+        False, "--reset", help="Elimina l'indice esistente e ricrea la collection."
+    ),
 ):
     """Indicizza docs+codice del repository in un vector store locale."""
     n_files, n_chunks = index_repo(path, reset=reset)
-    console.print(Panel.fit(
-        f"Indicizzati {n_files} file, {n_chunks} chunk.\nIndex dir: {settings.index_dir}",
-        title="Index"
-    ))
+    console.print(
+        Panel.fit(
+            f"Indicizzati {n_files} file, {n_chunks} chunk.\nIndex dir: {settings.index_dir}",
+            title="Index",
+        )
+    )
+
 
 @app.command()
 def ask(
     question: str,
     out_dir: str = typer.Option("out", "--out"),
-    rag_only: bool = typer.Option(False, "--rag-only")
-    ):
+    rag_only: bool = typer.Option(False, "--rag-only"),
+    onboarding: bool = typer.Option(False, "--onboarding"),
+):
     """Q/A sulla codebase con citazioni (Markdown + JSON)."""
     typer.echo(f"[DEBUG] rag_only={rag_only}")
-    ans, sources, raw = answer_with_citations(question,rag_only=rag_only)
+    ans, sources, raw = answer_with_citations(
+        question, rag_only=rag_only, onboarding=onboarding
+    )
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     (Path(out_dir) / "sources_debug.txt").write_text(
-        "\n\n".join([f"[{s.ref}] {s.path} (chunk_id={s.chunk_id})\n{s.excerpt}" for s in sources]),
+        "\n\n".join(
+            [
+                f"[{s.ref}] {s.path} (chunk_id={s.chunk_id})\n{s.excerpt}"
+                for s in sources
+            ]
+        ),
         encoding="utf-8",
     )
     (Path(out_dir) / "raw_llm.txt").write_text(raw or "", encoding="utf-8")
 
-    (Path(out_dir) / "answer.json").write_text(ans.model_dump_json(indent=2), encoding="utf-8")
+    (Path(out_dir) / "answer.json").write_text(
+        ans.model_dump_json(indent=2), encoding="utf-8"
+    )
 
     md = ["# RepoCopilot Answer", "", ans.answer_md.strip(), "", "## Citations"]
     if ans.citations:
@@ -86,16 +104,21 @@ def ask(
     md.append("\n## Sources (retrieved)")
     for s in sources:
         md.append(f"- **{s.ref}** → `{s.path}` (chunk: `{s.chunk_id}`)")
-        #print(s)
+        # print(s)
 
     (Path(out_dir) / "answer.md").write_text("\n".join(md), encoding="utf-8")
 
-    console.print(Panel.fit(f"Scritti: {out_dir}/answer.md e {out_dir}/answer.json", title="Ask"))
+    console.print(
+        Panel.fit(f"Scritti: {out_dir}/answer.md e {out_dir}/answer.json", title="Ask")
+    )
     console.print(ans.answer_md)
+
 
 @app.command("pr-notes")
 def pr_notes(
-    range_spec: str = typer.Option("HEAD~1..HEAD", "--range", help="Range git diff, es: HEAD~1..HEAD"),
+    range_spec: str = typer.Option(
+        "HEAD~1..HEAD", "--range", help="Range git diff, es: HEAD~1..HEAD"
+    ),
     out_dir: str = typer.Option("out_pr", "--out", help="Cartella output"),
 ):
     """Genera PR notes (summary, rischi, test plan) a partire da git diff."""
@@ -103,7 +126,9 @@ def pr_notes(
 
     diff_text = get_git_diff(range_spec)
     if not diff_text.strip():
-        console.print(Panel.fit("Diff vuoto: nessuna modifica da analizzare.", title="PR Notes"))
+        console.print(
+            Panel.fit("Diff vuoto: nessuna modifica da analizzare.", title="PR Notes")
+        )
         raise typer.Exit(code=0)
 
     file_hunks = parse_unified_diff_files(diff_text)
@@ -113,10 +138,14 @@ def pr_notes(
         snippet = extract_file_context(repo_root, fh)
         file_snippets.append((fh.path, snippet))
 
-    notes, sources = generate_pr_notes(diff_text=diff_text, file_snippets=file_snippets, repo_root=repo_root)
+    notes, sources = generate_pr_notes(
+        diff_text=diff_text, file_snippets=file_snippets, repo_root=repo_root
+    )
     notes.files_changed = files_changed
     Path(out_dir).mkdir(parents=True, exist_ok=True)
-    (Path(out_dir) / "pr_notes.json").write_text(notes.model_dump_json(indent=2), encoding="utf-8")
+    (Path(out_dir) / "pr_notes.json").write_text(
+        notes.model_dump_json(indent=2), encoding="utf-8"
+    )
 
     md = []
     md.append(f"# {notes.title}")
@@ -135,7 +164,9 @@ def pr_notes(
         md.append("- (nessun rischio indicato)")
     md.append("")
     md.append("## Suggested tests")
-    md.extend([f"- {t}" for t in notes.suggested_tests] or ["- (nessun test suggerito)"])
+    md.extend(
+        [f"- {t}" for t in notes.suggested_tests] or ["- (nessun test suggerito)"]
+    )
     md.append("")
     md.append("## Rollout plan")
     md.extend([f"- {x}" for x in notes.rollout_plan] or ["- (vuoto)"])
@@ -159,6 +190,13 @@ def pr_notes(
 
     (Path(out_dir) / "pr_notes.md").write_text("\n".join(md), encoding="utf-8")
 
-    console.print(Panel.fit(f"Scritti: {out_dir}/pr_notes.md e {out_dir}/pr_notes.json", title="PR Notes"))
+    console.print(
+        Panel.fit(
+            f"Scritti: {out_dir}/pr_notes.md e {out_dir}/pr_notes.json",
+            title="PR Notes",
+        )
+    )
+
+
 if __name__ == "__main__":
     app()

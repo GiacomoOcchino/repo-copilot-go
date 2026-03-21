@@ -34,7 +34,7 @@ def _parse_project_scripts(pyproject_text: str) -> Dict[str, str]:
             continue
 
         if raw.startswith("[") and raw.endswith("]"):
-            in_section = (raw == "[project.scripts]")
+            in_section = raw == "[project.scripts]"
             continue
 
         if in_section and "=" in raw:
@@ -48,11 +48,20 @@ def _parse_project_scripts(pyproject_text: str) -> Dict[str, str]:
 
 def _needs_entrypoint_context(q: str) -> bool:
     ql = q.lower()
-    hints = ("entrypoint", "entry point", "console script", "project.scripts", "entry_points", "console_scripts")
+    hints = (
+        "entrypoint",
+        "entry point",
+        "console script",
+        "project.scripts",
+        "entry_points",
+        "console_scripts",
+    )
     return any(h in ql for h in hints)
 
 
-def try_deterministic_entrypoint(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+def try_deterministic_entrypoint(
+    question: str,
+) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     if not _needs_entrypoint_context(question):
         return None
 
@@ -67,12 +76,16 @@ def try_deterministic_entrypoint(question: str) -> Optional[Tuple[AnswerWithCita
             answer_md="Non ho trovato la sezione `[project.scripts]` in `pyproject.toml`.",
             citations=[],
             confidence="bassa",
-            open_questions=["Il progetto usa setuptools entry_points (setup.py/setup.cfg) invece di [project.scripts]?"],
+            open_questions=[
+                "Il progetto usa setuptools entry_points (setup.py/setup.cfg) invece di [project.scripts]?"
+            ],
         )
         src = _make_source("S1", pyproject, "pyproject.toml::deterministic", text)
         return ans, [src]
 
-    script_name = "repocopilot" if "repocopilot" in scripts else sorted(scripts.keys())[0]
+    script_name = (
+        "repocopilot" if "repocopilot" in scripts else sorted(scripts.keys())[0]
+    )
     entry = scripts[script_name]
     quote = f'{script_name} = "{entry}"'
 
@@ -93,9 +106,14 @@ def try_deterministic_entrypoint(question: str) -> Optional[Tuple[AnswerWithCita
     return ans, [src]
 
 
-def try_deterministic_default_models(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+def try_deterministic_default_models(
+    question: str,
+) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     q = question.lower()
-    if not (("modelli" in q or "models" in q) and ("default" in q or "di default" in q or "predefiniti" in q)):
+    if not (
+        ("modelli" in q or "models" in q)
+        and ("default" in q or "di default" in q or "predefiniti" in q)
+    ):
         return None
 
     cfg = _repo_root() / "src" / "repocopilot" / "config.py"
@@ -103,16 +121,34 @@ def try_deterministic_default_models(question: str) -> Optional[Tuple[AnswerWith
         return None
 
     text = _read_text(cfg)
-    m_chat = re.search(r'chat_model:\s*str\s*=\s*os\.getenv\([^,]+,\s*"([^"]+)"\)', text)
-    m_emb = re.search(r'embed_model:\s*str\s*=\s*os\.getenv\([^,]+,\s*"([^"]+)"\)', text)
+    m_chat = re.search(
+        r'chat_model:\s*str\s*=\s*os\.getenv\([^,]+,\s*"([^"]+)"\)', text
+    )
+    m_emb = re.search(
+        r'embed_model:\s*str\s*=\s*os\.getenv\([^,]+,\s*"([^"]+)"\)', text
+    )
     if not (m_chat and m_emb):
         return None
 
     chat_model = m_chat.group(1)
     embed_model = m_emb.group(1)
 
-    chat_line = next((ln.strip() for ln in text.splitlines() if "chat_model" in ln and "os.getenv" in ln), "")
-    emb_line = next((ln.strip() for ln in text.splitlines() if "embed_model" in ln and "os.getenv" in ln), "")
+    chat_line = next(
+        (
+            ln.strip()
+            for ln in text.splitlines()
+            if "chat_model" in ln and "os.getenv" in ln
+        ),
+        "",
+    )
+    emb_line = next(
+        (
+            ln.strip()
+            for ln in text.splitlines()
+            if "embed_model" in ln and "os.getenv" in ln
+        ),
+        "",
+    )
 
     ans = AnswerWithCitations(
         answer_md=(
@@ -120,7 +156,10 @@ def try_deterministic_default_models(question: str) -> Optional[Tuple[AnswerWith
             f"- Chat: `{chat_model}`\n"
             f"- Embeddings: `{embed_model}`"
         ),
-        citations=[{"ref": "S1", "quote": chat_line[:200]}, {"ref": "S1", "quote": emb_line[:200]}],
+        citations=[
+            {"ref": "S1", "quote": chat_line[:200]},
+            {"ref": "S1", "quote": emb_line[:200]},
+        ],
         confidence="alta",
         open_questions=[],
     )
@@ -128,9 +167,14 @@ def try_deterministic_default_models(question: str) -> Optional[Tuple[AnswerWith
     return ans, [src]
 
 
-def try_deterministic_cli_commands(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+def try_deterministic_cli_commands(
+    question: str,
+) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     q = question.lower()
-    if not (("comandi" in q or "commands" in q) and ("cli" in q or "command" in q or "implement" in q or "implementati" in q)):
+    if not (
+        ("comandi" in q or "commands" in q)
+        and ("cli" in q or "command" in q or "implement" in q or "implementati" in q)
+    ):
         return None
 
     cli = _repo_root() / "src" / "repocopilot" / "cli.py"
@@ -138,7 +182,9 @@ def try_deterministic_cli_commands(question: str) -> Optional[Tuple[AnswerWithCi
         return None
 
     text = _read_text(cli)
-    cmds = re.findall(r"@app\.command\(\)\s*\r?\n\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", text)
+    cmds = re.findall(
+        r"@app\.command\(\)\s*\r?\n\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", text
+    )
     if not cmds:
         ans = AnswerWithCitations(
             answer_md="Non ho trovato comandi Typer del tipo `@app.command()` in `src/repocopilot/cli.py`.",
@@ -166,7 +212,8 @@ def try_deterministic_cli_commands(question: str) -> Optional[Tuple[AnswerWithCi
     excerpt = "\n".join(excerpt_lines[:120]) or text[:2000]
 
     ans = AnswerWithCitations(
-        answer_md="Comandi CLI implementati (decorator `@app.command()`):\n\n" + "\n".join(f"- `{c}`" for c in cmds_unique),
+        answer_md="Comandi CLI implementati (decorator `@app.command()`):\n\n"
+        + "\n".join(f"- `{c}`" for c in cmds_unique),
         citations=[{"ref": "S1", "quote": "@app.command()"}],
         confidence="alta",
         open_questions=[],
@@ -175,7 +222,9 @@ def try_deterministic_cli_commands(question: str) -> Optional[Tuple[AnswerWithCi
     return ans, [src]
 
 
-def try_deterministic_doctor(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+def try_deterministic_doctor(
+    question: str,
+) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     q = question.lower()
     if "doctor" not in q:
         return None
@@ -185,7 +234,11 @@ def try_deterministic_doctor(question: str) -> Optional[Tuple[AnswerWithCitation
         return None
 
     text = _read_text(cli)
-    m = re.search(r"def\s+doctor\s*\(.*?\):(?P<body>.*?)(?=\n@app\.command|\nif __name__|\Z)", text, flags=re.S)
+    m = re.search(
+        r"def\s+doctor\s*\(.*?\):(?P<body>.*?)(?=\n@app\.command|\nif __name__|\Z)",
+        text,
+        flags=re.S,
+    )
     excerpt = m.group(0)[:2000] if m else text[:2000]
 
     ans = AnswerWithCitations(
@@ -195,8 +248,11 @@ def try_deterministic_doctor(question: str) -> Optional[Tuple[AnswerWithCitation
             "- embeddings (embed di test)\n"
             "- chat completion (chat di test)\n"
         ),
-        citations=[{"ref": "S1", "quote": "models = list_models()"}, {"ref": "S1", "quote": "embed([\"ping\"])"},
-                   {"ref": "S1", "quote": "out = chat("}],
+        citations=[
+            {"ref": "S1", "quote": "models = list_models()"},
+            {"ref": "S1", "quote": 'embed(["ping"])'},
+            {"ref": "S1", "quote": "out = chat("},
+        ],
         confidence="alta",
         open_questions=[],
     )
@@ -204,11 +260,16 @@ def try_deterministic_doctor(question: str) -> Optional[Tuple[AnswerWithCitation
     return ans, [src]
 
 
-def try_deterministic_embeddings_where(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+def try_deterministic_embeddings_where(
+    question: str,
+) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     q = question.lower()
-    #if "embedding" not in q and "embeddings" not in q:
+    # if "embedding" not in q and "embeddings" not in q:
     #    return None
-    if not (("embedding" in q or "embeddings" in q) and ("dove" in q or "where" in q or "file" in q or "quali" in q or "punti" in q)):
+    if not (
+        ("embedding" in q or "embeddings" in q)
+        and ("dove" in q or "where" in q or "file" in q or "quali" in q or "punti" in q)
+    ):
         return None
 
     root = _repo_root()
@@ -228,7 +289,11 @@ def try_deterministic_embeddings_where(question: str) -> Optional[Tuple[AnswerWi
     for i, f in enumerate(files[:3], start=1):
         txt = _read_text(f)
         # excerpt: prime righe che contengono embed(
-        lines = [ln.strip() for ln in txt.splitlines() if "embed(" in ln or "def embed(" in ln][:30]
+        lines = [
+            ln.strip()
+            for ln in txt.splitlines()
+            if "embed(" in ln or "def embed(" in ln
+        ][:30]
         excerpt = "\n".join(lines) or txt[:2000]
         sources.append(_make_source(f"S{i}", f, f"{f.name}::deterministic", excerpt))
 
@@ -244,9 +309,15 @@ def try_deterministic_embeddings_where(question: str) -> Optional[Tuple[AnswerWi
     )
     return ans, sources
 
-def try_deterministic_embed_purpose(question: str) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
+
+def try_deterministic_embed_purpose(
+    question: str,
+) -> Optional[Tuple[AnswerWithCitations, List[Source]]]:
     q = question.lower()
-    if not (("embed" in q or "embeddings" in q) and ("scopo" in q or "purpose" in q or "perché" in q or "why" in q)):
+    if not (
+        ("embed" in q or "embeddings" in q)
+        and ("scopo" in q or "purpose" in q or "perché" in q or "why" in q)
+    ):
         return None
 
     root = _repo_root()
@@ -263,17 +334,25 @@ def try_deterministic_embed_purpose(question: str) -> Optional[Tuple[AnswerWithC
                 return ln.strip()
         return ""
 
-    rag_line = first_line_containing(rag, "q_emb = embed(")         # query embedding (retrieval)
-    idx_line = first_line_containing(idx, "embs = embed(")          # doc embedding (indexing)  <-- perfetto
-    http_line = first_line_containing(http, "def embed(")           # definizione
+    rag_line = first_line_containing(
+        rag, "q_emb = embed("
+    )  # query embedding (retrieval)
+    idx_line = first_line_containing(
+        idx, "embs = embed("
+    )  # doc embedding (indexing)  <-- perfetto
+    http_line = first_line_containing(http, "def embed(")  # definizione
 
     sources: List[Source] = []
     if rag.exists():
         sources.append(_make_source("S1", rag, "rag.py::embed-call", _read_text(rag)))
     if idx.exists():
-        sources.append(_make_source("S2", idx, "indexer.py::embed-call", _read_text(idx)))
+        sources.append(
+            _make_source("S2", idx, "indexer.py::embed-call", _read_text(idx))
+        )
     if http.exists():
-        sources.append(_make_source("S3", http, "http_llm.py::embed-def", _read_text(http)))
+        sources.append(
+            _make_source("S3", http, "http_llm.py::embed-def", _read_text(http))
+        )
 
     answer_md = (
         "✅ `embed()` serve a trasformare testo in vettori (embeddings) e viene usata in due momenti:\n\n"

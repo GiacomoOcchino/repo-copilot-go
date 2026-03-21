@@ -67,7 +67,9 @@ def parse_unified_diff_files(diff_text: str) -> List[FileHunk]:
     return [FileHunk(path=k, hunks=v) for k, v in files.items()]
 
 
-def extract_file_context(repo_root: Path, fh: FileHunk, pad: int = 6, max_chars: int = 2000) -> str:
+def extract_file_context(
+    repo_root: Path, fh: FileHunk, pad: int = 6, max_chars: int = 2000
+) -> str:
     """
     Legge il file corrente e ritorna snippet intorno alle linee toccate.
     Se il file non esiste (deleted/renamed), ritorna stringa vuota.
@@ -96,7 +98,7 @@ def extract_file_context(repo_root: Path, fh: FileHunk, pad: int = 6, max_chars:
 
     chunks: List[str] = []
     for a, b in merged:
-        snippet = "\n".join(lines[i-1] for i in range(a, b + 1))
+        snippet = "\n".join(lines[i - 1] for i in range(a, b + 1))
         chunks.append(f"# {fh.path} lines {a}-{b}\n{snippet}")
 
     out = "\n...\n".join(chunks)

@@ -3,14 +3,17 @@ import httpx
 from typing import List, Any, Dict
 from .config import settings
 
+
 def _client() -> httpx.Client:
     return httpx.Client(base_url=settings.base_url, timeout=60.0)
+
 
 def list_models() -> Dict[str, Any]:
     with _client() as c:
         r = c.get("/models")
         r.raise_for_status()
         return r.json()
+
 
 def embed(texts: List[str]) -> List[List[float]]:
     payload = {"model": settings.embed_model, "input": texts}
@@ -20,7 +23,10 @@ def embed(texts: List[str]) -> List[List[float]]:
         data = r.json()
         return [item["embedding"] for item in data["data"]]
 
-def chat(system: str, user: str,temperature: float = 0.0, max_tokens: int = 800) -> str:
+
+def chat(
+    system: str, user: str, temperature: float = 0.0, max_tokens: int = 800
+) -> str:
     payload = {
         "model": settings.chat_model,
         "messages": [
@@ -35,9 +41,11 @@ def chat(system: str, user: str,temperature: float = 0.0, max_tokens: int = 800)
         r.raise_for_status()
         data = r.json()
         return data["choices"][0]["message"]["content"]
-    
 
-def ollama_chat_structured(messages: List[Dict[str, str]], schema: Dict[str, Any], temperature: float = 0.0) -> str:
+
+def ollama_chat_structured(
+    messages: List[Dict[str, str]], schema: Dict[str, Any], temperature: float = 0.0
+) -> str:
     """
     Chiama l'endpoint Ollama nativo /api/chat usando 'format' (JSON schema),
     che forza l'output a rispettare lo schema (Structured Outputs).
@@ -51,7 +59,7 @@ def ollama_chat_structured(messages: List[Dict[str, str]], schema: Dict[str, Any
         "model": settings.chat_model,
         "messages": messages,
         "stream": False,
-        "format": schema,                 # <-- schema JSON qui
+        "format": schema,  # <-- schema JSON qui
         "options": {"temperature": temperature},
     }
 
