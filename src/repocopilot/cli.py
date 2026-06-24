@@ -6,7 +6,6 @@ from rich.panel import Panel
 
 from .http_llm import list_models, embed, chat
 from .indexer import index_repo
-from .rag import answer_with_citations
 from .config import settings
 from .git_utils import get_git_diff, parse_unified_diff_files, extract_file_context
 from .pr_notes import generate_pr_notes
@@ -66,19 +65,57 @@ def index(
     )
 
 
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+
+from .rag import prepare_ask, finalize_ask_answer
+from .http_llm import chat_stream
+
+console = Console()
+
+
 @app.command()
 def ask(
     question: str,
     out_dir: str = typer.Option("out", "--out"),
     rag_only: bool = typer.Option(False, "--rag-only"),
     onboarding: bool = typer.Option(False, "--onboarding"),
+    stream: bool = typer.Option(False, "--stream"),
 ):
-    """Q/A sulla codebase con citazioni (Markdown + JSON)."""
-    typer.echo(f"[DEBUG] rag_only={rag_only}")
-    ans, sources, raw = answer_with_citations(
+    det_ans, sources, system, user = prepare_ask(
         question, rag_only=rag_only, onboarding=onboarding
     )
+
+    if det_ans is not None:
+        ans = det_ans
+        raw = ""
+    else:
+        if not stream:
+            raw = chat(system=system, user=user, temperature=0.0, max_tokens=900)
+        else:
+            buf = []
+            rendered = ""
+
+            # aggiorna ogni tot caratteri per evitare flicker
+            UPDATE_EVERY = 40
+
+            with Live(Markdown(""), console=console, refresh_per_second=12) as live:
+                for delta in chat_stream(
+                    system=system, user=user, temperature=0.0, max_tokens=900
+                ):
+                    buf.append(delta)
+                    rendered = "".join(buf)
+                    if len(rendered) % UPDATE_EVERY < len(delta):
+                        live.update(Markdown(rendered))
+                live.update(Markdown(rendered))
+
+            raw = rendered
+
+        ans = finalize_ask_answer(question, sources, raw)
+
     Path(out_dir).mkdir(parents=True, exist_ok=True)
+    (Path(out_dir) / "raw_llm.txt").write_text(raw or "", encoding="utf-8")
     (Path(out_dir) / "sources_debug.txt").write_text(
         "\n\n".join(
             [
@@ -88,30 +125,59 @@ def ask(
         ),
         encoding="utf-8",
     )
-    (Path(out_dir) / "raw_llm.txt").write_text(raw or "", encoding="utf-8")
-
     (Path(out_dir) / "answer.json").write_text(
         ans.model_dump_json(indent=2), encoding="utf-8"
     )
+    # answer.md come già fai (se lo fai con renderer Markdown, lascia invariato)
 
-    md = ["# RepoCopilot Answer", "", ans.answer_md.strip(), "", "## Citations"]
-    if ans.citations:
-        for c in ans.citations:
-            md.append(f"- **{c.ref}**: `{c.quote}`")
-    else:
-        md.append("- (nessuna citazione estratta)")
 
-    md.append("\n## Sources (retrieved)")
-    for s in sources:
-        md.append(f"- **{s.ref}** → `{s.path}` (chunk: `{s.chunk_id}`)")
-        # print(s)
+# @app.command()
+# def ask(
+#     question: str,
+#     out_dir: str = typer.Option("out", "--out"),
+#     rag_only: bool = typer.Option(False, "--rag-only"),
+#     onboarding: bool = typer.Option(False, "--onboarding"),
+#     stream: bool = typer.Option(False,"--stream")
+# ):
+#     """Q/A sulla codebase con citazioni (Markdown + JSON)."""
+#     # typer.echo(f"[DEBUG] rag_only={rag_only}")
+#     ans, sources, raw = answer_with_citations(
+#         question, rag_only=rag_only, onboarding=onboarding
+#     )
+#     Path(out_dir).mkdir(parents=True, exist_ok=True)
+#     (Path(out_dir) / "sources_debug.txt").write_text(
+#         "\n\n".join(
+#             [
+#                 f"[{s.ref}] {s.path} (chunk_id={s.chunk_id})\n{s.excerpt}"
+#                 for s in sources
+#             ]
+#         ),
+#         encoding="utf-8",
+#     )
+#     (Path(out_dir) / "raw_llm.txt").write_text(raw or "", encoding="utf-8")
 
-    (Path(out_dir) / "answer.md").write_text("\n".join(md), encoding="utf-8")
+#     (Path(out_dir) / "answer.json").write_text(
+#         ans.model_dump_json(indent=2), encoding="utf-8"
+#     )
 
-    console.print(
-        Panel.fit(f"Scritti: {out_dir}/answer.md e {out_dir}/answer.json", title="Ask")
-    )
-    console.print(ans.answer_md)
+#     md = ["# RepoCopilot Answer", "", ans.answer_md.strip(), "", "## Citations"]
+#     if ans.citations:
+#         for c in ans.citations:
+#             md.append(f"- **{c.ref}**: `{c.quote}`")
+#     else:
+#         md.append("- (nessuna citazione estratta)")
+
+#     md.append("\n## Sources (retrieved)")
+#     for s in sources:
+#         md.append(f"- **{s.ref}** → `{s.path}` (chunk: `{s.chunk_id}`)")
+#         # print(s)
+
+#     (Path(out_dir) / "answer.md").write_text("\n".join(md), encoding="utf-8")
+
+#     console.print(
+#         Panel.fit(f"Scritti: {out_dir}/answer.md e {out_dir}/answer.json", title="Ask")
+#     )
+#     console.print(ans.answer_md)
 
 
 @app.command("pr-notes")

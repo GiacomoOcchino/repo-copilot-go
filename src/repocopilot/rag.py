@@ -450,6 +450,20 @@ def pick_citations(
 
 def answer_with_citations(
     question: str, rag_only: bool = False, onboarding: bool = False
+):
+    det_ans, sources, system, user = prepare_ask(
+        question, rag_only=rag_only, onboarding=onboarding
+    )
+    if det_ans is not None:
+        return det_ans, sources, ""
+
+    raw = chat(system=system, user=user, temperature=0.0, max_tokens=900)
+    ans = finalize_ask_answer(question, sources, raw)
+    return ans, sources, raw
+
+
+def OLD_answer_with_citations(
+    question: str, rag_only: bool = False, onboarding: bool = False
 ) -> Tuple[AnswerWithCitations, List[Source], str]:
     # deterministici prima
     if not rag_only:
@@ -536,3 +550,67 @@ def answer_with_citations(
     ans = _verify_and_filter_citations(ans, sources)
 
     return ans, sources, raw
+
+
+def prepare_ask(
+    question: str,
+    rag_only: bool = False,
+    onboarding: bool = False,
+) -> Tuple[Optional[AnswerWithCitations], List[Source], str, str]:
+    """
+    Ritorna:
+      - deterministic_ans (se risponde deterministico) oppure None
+      - sources
+      - system prompt
+      - user prompt
+    """
+    if not rag_only:
+        for resolver in (
+            try_deterministic_entrypoint,
+            try_deterministic_cli_commands,
+            try_deterministic_default_models,
+            try_deterministic_doctor,
+            try_deterministic_embed_purpose,
+            try_deterministic_embeddings_where,
+        ):
+            out = resolver(question)
+            if out is not None:
+                ans, srcs = out
+                return ans, srcs, "", ""
+
+    sources = retrieve(
+        question
+    )  # se hai onboarding in retrieve, passa onboarding=onboarding
+
+    # budget: evidenze + 2 chunk
+    if any(s.chunk_id.startswith("evidence::") for s in sources):
+        evid = [s for s in sources if s.chunk_id.startswith("evidence::")]
+        other = [s for s in sources if not s.chunk_id.startswith("evidence::")]
+        sources = evid + other[:2]
+
+    sources_block = "\n".join(
+        f"[{s.ref}] path={s.path} (chunk_id={s.chunk_id})\nexcerpt:\n{s.excerpt}\n"
+        for s in sources
+    )
+
+    system = (
+        "Sei RepoCopilot. Usa SOLO le fonti fornite.\n"
+        "Rispondi in Markdown, tecnico ma chiaro.\n"
+        "Se non trovi info nelle fonti, dillo esplicitamente."
+    )
+    user = f"DOMANDA:\n{question}\n\nFONTI:\n{sources_block}\n"
+
+    return None, sources, system, user
+
+
+def finalize_ask_answer(
+    question: str, sources: List[Source], raw: str
+) -> AnswerWithCitations:
+    ans = AnswerWithCitations(
+        answer_md=(raw or "").strip(),
+        citations=pick_citations(question, sources),
+        confidence="media" if sources else "bassa",
+        open_questions=[],
+    )
+    ans = _verify_and_filter_citations(ans, sources)
+    return ans

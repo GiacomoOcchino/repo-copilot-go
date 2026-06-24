@@ -1,11 +1,52 @@
 from __future__ import annotations
+import json
 import httpx
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Iterator
 from .config import settings
 
 
 def _client() -> httpx.Client:
     return httpx.Client(base_url=settings.base_url, timeout=60.0)
+
+
+def chat_stream(
+    system: str, user: str, temperature: float = 0.0, max_tokens: int = 900
+) -> Iterator[str]:
+    payload = {
+        "model": settings.chat_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    with _client() as c:
+        with c.stream("POST", "/chat/completions", json=payload) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                # SSE: data: {...}
+                if line.startswith("data:"):
+                    data = line[len("data:") :].strip()
+                else:
+                    data = line.strip()
+
+                if data == "[DONE]":
+                    break
+
+                try:
+                    obj = json.loads(data)
+                except Exception:
+                    continue
+
+                # OpenAI delta format
+                delta = obj.get("choices", [{}])[0].get("delta", {}).get("content")
+                if delta:
+                    yield delta
 
 
 def list_models() -> Dict[str, Any]:

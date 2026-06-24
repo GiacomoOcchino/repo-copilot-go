@@ -13,7 +13,21 @@ class Settings(BaseModel):
     collection_name: str = os.getenv("REPOCOPILOT_COLLECTION", "repo_chunks")
 
     # Indexing
-    include_ext: tuple[str, ...] = (".md", ".txt", ".py", ".toml", ".php", ".html")
+    include_ext: tuple[str, ...] = (
+        ".md",
+        ".txt",
+        ".py",
+        ".toml",
+        ".php",
+        ".html",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".json",
+        ".yml",
+        ".yaml",
+    )
     exclude_dirs: tuple[str, ...] = (
         ".git",
         ".venv",
@@ -31,12 +45,32 @@ class Settings(BaseModel):
         ".mypy_cache",
         ".ruff_cache",
         "vendor",
-        "node_modules",
+        # Next.js / React
+        ".next",
+        ".vercel",
+        ".turbo",
+        "coverage",
+        "storybook-static",
+        # Docker
+        "docker",
+        ".docker",
+        "docker-data",
+        "docker-volume",
+        "db-data",
+        # Cache varie
+        ".cache",
+        ".parcel-cache",
     )
     exclude_files: list[str] = [
         "src/repocopilot/deterministic.py",
         "src/repocopilot/pr_notes.py",
         "src/repocopilot/git_utils.py",
+        # Config pesanti o non utili
+        "next.config.js",
+        "next.config.mjs",
+        "postcss.config.js",
+        "tailwind.config.js",
+        "docker-compose.yml",
     ]
     max_chars_per_chunk: int = 1800
     overlap_chars: int = 150
